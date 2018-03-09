@@ -1,0 +1,8 @@
+{{range .Specs}}
+type {{.Name}} {
+    {{range .Fields}}
+        {{.Name}}: {{.Type}}!
+    {{end}}
+}
+
+{{end}}
