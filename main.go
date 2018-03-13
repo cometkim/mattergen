@@ -5,6 +5,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
+	"path"
 	"strings"
 )
 
@@ -12,7 +14,11 @@ func main() {
 	fset := token.NewFileSet()
 
 	// TODO: Read all model from mattermost-server
-	f, err := parser.ParseFile(fset, "sample/user.go", nil, 0)
+	gopath := os.Getenv("GOPATH")
+	pkgpath := "github.com/mattermost/mattermost-server"
+	modelpath := path.Join(gopath, "src", pkgpath, "model")
+
+	f, err := parser.ParseFile(fset, path.Join(modelpath, "user.go"), nil, 0)
 	if err != nil {
 		panic(err)
 	}
