@@ -10,6 +10,17 @@ import (
 	"strings"
 )
 
+type StructDecl struct {
+	Name string
+	Ref  *ast.StructType
+}
+
+type StructField struct {
+	Type string
+	Name string
+	Ref  *ast.Field
+}
+
 func main() {
 	fset := token.NewFileSet()
 
@@ -36,11 +47,6 @@ func main() {
 	// TODO: Generate files using template
 }
 
-type StructDecl struct {
-	Name string
-	Pos  *ast.StructType
-}
-
 func parseStructDecls(f *ast.File) []StructDecl {
 	var decls []StructDecl
 	for _, fdecl := range f.Decls {
@@ -50,7 +56,7 @@ func parseStructDecls(f *ast.File) []StructDecl {
 					if t, ok := s.Type.(*ast.StructType); ok {
 						decls = append(decls, StructDecl{
 							Name: s.Name.Name,
-							Pos:  t,
+							Ref:  t,
 						})
 					}
 				}
@@ -58,12 +64,6 @@ func parseStructDecls(f *ast.File) []StructDecl {
 		}
 	}
 	return decls
-}
-
-type StructField struct {
-	Type string
-	Name string
-	Pos  *ast.Field
 }
 
 func parseStructJsonFields(s *ast.StructType) []StructField {
@@ -84,7 +84,7 @@ func parseStructJsonFields(s *ast.StructType) []StructField {
 			fields = append(fields, StructField{
 				Type: t,
 				Name: n,
-				Pos:  f,
+				Ref:  f,
 			})
 		}
 	}
