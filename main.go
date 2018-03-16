@@ -34,13 +34,21 @@ func main() {
 		panic(err)
 	}
 
+	// TODO: Map Field.Type to ts, flow, graphql ...and whatever
+	tsMap := map[string]string{
+		"bool":      "boolean",
+		"int":       "number",
+		"int64":     "number",
+		"string":    "string",
+		"StringMap": "Map<string, string>",
+	}
+
 	decls := parseStructDecls(f)
 	for _, decl := range decls {
 		fmt.Println(decl.Name)
-		for _, field := range parseStructJsonFields(decl.Pos) {
-			fmt.Printf(" - %s %s\n", field.Name, field.Type)
+		for _, field := range parseStructJsonFields(decl.Ref) {
+			fmt.Printf(" - %v %v\n", field.Name, tsMap[field.Type])
 
-			// TODO: Map Field.Type to ts, flow, and graphql
 		}
 	}
 
