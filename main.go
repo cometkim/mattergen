@@ -1,13 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path"
 	"strings"
+	"text/template"
 )
 
 type StructDecl struct {
@@ -19,6 +19,12 @@ type StructField struct {
 	Type string
 	Name string
 	Ref  *ast.Field
+}
+
+type Spec struct {
+	Type   string
+	Name   string
+	Fields []Spec
 }
 
 func main() {
@@ -43,16 +49,33 @@ func main() {
 		"StringMap": "Map<string, string>",
 	}
 
+	var specs []Spec
 	decls := parseStructDecls(f)
 	for _, decl := range decls {
-		fmt.Println(decl.Name)
+		var root Spec
+		var children []Spec
 		for _, field := range parseStructJsonFields(decl.Ref) {
-			fmt.Printf(" - %v %v\n", field.Name, tsMap[field.Type])
-
+			children = append(children, Spec{
+				Name:   field.Name,
+				Type:   tsMap[field.Type],
+				Fields: nil,
+			})
 		}
+		root.Name = decl.Name
+		root.Type = "interface"
+		root.Fields = children
+		specs = append(specs, root)
 	}
 
-	// TODO: Generate files using template
+	t, err := template.ParseGlob("templates/*.tmpl")
+	if err != nil {
+		panic(err)
+	}
+
+	err = t.ExecuteTemplate(os.Stdout, "typescript.tmpl", specs)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func parseStructDecls(f *ast.File) []StructDecl {

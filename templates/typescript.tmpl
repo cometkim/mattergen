@@ -1,0 +1,8 @@
+{{range . -}}
+declare {{.Type}} {{.Name}} {
+{{- range .Fields}}
+    {{.Name}}: {{.Type}}
+{{- end}}
+}
+
+{{end}}
