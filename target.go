@@ -35,16 +35,17 @@ func (target *Target) convertType(t string) string {
 		fallthrough
 	case TargetFlow:
 		return map[string]string{
-			"bool":        "boolean",
-			"int":         "number",
-			"int32":       "number",
-			"int64":       "number",
-			"float":       "number",
-			"float32":     "number",
-			"float64":     "number",
-			"string":      "string",
-			"StringArray": "Array<string>",
-			"StringMap":   "Map<string, string>",
+			"bool":            "boolean",
+			"int":             "number",
+			"int32":           "number",
+			"int64":           "number",
+			"float":           "number",
+			"float32":         "number",
+			"float64":         "number",
+			"string":          "string",
+			"StringArray":     "Array<string>",
+			"StringMap":       "Map<string, string>",
+			"StringInterface": "Map<string, any>",
 		}[t]
 	}
 	return ""
