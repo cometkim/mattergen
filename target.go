@@ -35,11 +35,16 @@ func (target *Target) convertType(t string) string {
 		fallthrough
 	case TargetFlow:
 		return map[string]string{
-			"bool":      "boolean",
-			"int":       "number",
-			"int64":     "number", // Actually JavaScript does not supports 64-bit integers, yet.
-			"string":    "string",
-			"StringMap": "Map<string, string>",
+			"bool":        "boolean",
+			"int":         "number",
+			"int32":       "number",
+			"int64":       "number",
+			"float":       "number",
+			"float32":     "number",
+			"float64":     "number",
+			"string":      "string",
+			"StringArray": "Array<string>",
+			"StringMap":   "Map<string, string>",
 		}[t]
 	}
 	return ""
