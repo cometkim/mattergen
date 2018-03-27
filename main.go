@@ -1,123 +1,144 @@
 package main
 
 import (
-	"go/ast"
+	"flag"
+	"fmt"
 	"go/parser"
 	"go/token"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"text/template"
 )
 
-type StructDecl struct {
-	Name string
-	Ref  *ast.StructType
-}
-
-type StructField struct {
-	Type string
-	Name string
-	Ref  *ast.Field
-}
-
-type Spec struct {
-	Type   string
-	Name   string
-	Fields []Spec
-}
-
 func main() {
+	var targetId string
+
+	flag.StringVar(&targetId, "target", "", "Target want to use auto-generated type definitions (Required)")
+	flag.Parse()
+
+	if targetId == "" {
+		exitWithError("--target must be specified. currently supports typescript or flow")
+	}
+
+	target, err := NewTarget(targetId)
+	if err != nil {
+		exitWithError(err)
+	}
+
+	modelpath, err := checkPackageDir()
+	if err != nil {
+		exitWithError(err)
+	}
+
 	fset := token.NewFileSet()
 
-	// TODO: Read all model from mattermost-server
-	gopath := os.Getenv("GOPATH")
-	pkgpath := "github.com/mattermost/mattermost-server"
-	modelpath := path.Join(gopath, "src", pkgpath, "model")
-
-	f, err := parser.ParseFile(fset, path.Join(modelpath, "user.go"), nil, 0)
+	pkg, err := parser.ParseDir(fset, modelpath, func(file os.FileInfo) bool {
+		isNotTest := !strings.HasSuffix(file.Name(), "_test.go")
+		return isNotTest
+	}, 0)
 	if err != nil {
-		panic(err)
+		exitWithError(err)
 	}
 
-	// TODO: Map Field.Type to ts, flow, graphql ...and whatever
-	tsMap := map[string]string{
-		"bool":      "boolean",
-		"int":       "number",
-		"int64":     "number",
-		"string":    "string",
-		"StringMap": "Map<string, string>",
-	}
+	tmplBase := targetId + ".tmpl"
+	tmpl := template.Must(template.New(tmplBase).ParseFiles(path.Join("templates/", tmplBase)))
 
-	var specs []Spec
-	decls := parseStructDecls(f)
-	for _, decl := range decls {
-		var root Spec
-		var children []Spec
-		for _, field := range parseStructJsonFields(decl.Ref) {
-			children = append(children, Spec{
-				Name:   field.Name,
-				Type:   tsMap[field.Type],
-				Fields: nil,
-			})
+	for filePath, fileNode := range pkg["model"].Files {
+		fmt.Printf("Inspecting %s\n", filePath)
+
+		decls := inspectStructDecls(fileNode)
+		var newDecls []StructDecl
+
+		for _, decl := range decls {
+			fields := inspectStructFields(decl.Ref)
+			var newFields []Field
+
+			for _, field := range fields {
+				if field.Tag == "" {
+					continue
+				}
+
+				tag, err := parseJsonTag(field.Tag)
+				if err != nil {
+					continue
+				}
+
+				if tag.Name == "-" {
+					continue
+				}
+
+				t := target.convertType(field.Type)
+				if t == "" {
+					continue
+				}
+
+				newFields = append(newFields, Field{
+					Type: t,
+					Name: tag.Name,
+				})
+			}
+
+			if len(newFields) != 0 {
+				decl.Fields = newFields
+				newDecls = append(newDecls, decl)
+			}
 		}
-		root.Name = decl.Name
-		root.Type = "interface"
-		root.Fields = children
-		specs = append(specs, root)
-	}
 
-	t, err := template.ParseGlob("templates/*.tmpl")
-	if err != nil {
-		panic(err)
-	}
-
-	err = t.ExecuteTemplate(os.Stdout, "typescript.tmpl", specs)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func parseStructDecls(f *ast.File) []StructDecl {
-	var decls []StructDecl
-	for _, fdecl := range f.Decls {
-		if gen, ok := fdecl.(*ast.GenDecl); ok && gen.Tok == token.TYPE {
-			for _, spec := range gen.Specs {
-				if s, ok := spec.(*ast.TypeSpec); ok {
-					if t, ok := s.Type.(*ast.StructType); ok {
-						decls = append(decls, StructDecl{
-							Name: s.Name.Name,
-							Ref:  t,
-						})
-					}
+		if len(newDecls) != 0 {
+			for _, decl := range newDecls {
+				fmt.Printf("Decl: %s\n", decl.Name)
+				for _, field := range decl.Fields {
+					fmt.Printf("\tField { Type:%s, Name:%s }\n", field.Type, field.Name)
 				}
 			}
-		}
-	}
-	return decls
-}
 
-func parseStructJsonFields(s *ast.StructType) []StructField {
-	var fields []StructField
-	for _, f := range s.Fields.List {
-		if i := strings.Index(f.Tag.Value, "json"); i != -1 {
-			n := strings.Split(f.Tag.Value, "json:\"")[1]
-			n = strings.Split(n, "\"")[0]
-			n = strings.Split(n, ",")[0]
+			fileBase := filepath.Base(filePath)
+			fileExt := filepath.Ext(fileBase)
+			filename := fileBase[:len(fileBase)-len(fileExt)]
 
-			var t string
-			if ft, ok := f.Type.(*ast.Ident); ok {
-				t = ft.Name
-			} else if ft, ok := f.Type.(*ast.StarExpr); ok {
-				t = ft.X.(*ast.Ident).Name
+			outpath := path.Join("output", filename+target.Ext)
+
+			f, err := os.OpenFile(
+				outpath,
+				os.O_CREATE|os.O_WRONLY,
+				0664,
+			)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			defer f.Close()
+
+			err = tmpl.Execute(f, newDecls)
+			if err != nil {
+				fmt.Println(err)
 			}
 
-			fields = append(fields, StructField{
-				Type: t,
-				Name: n,
-				Ref:  f,
-			})
+			fmt.Printf("%s is generated\n", outpath)
+
+		} else {
+			fmt.Println("No available declarations, skipped.")
 		}
 	}
-	return fields
+}
+
+func checkPackageDir() (string, error) {
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		return "", fmt.Errorf("GOPATH is not set")
+	}
+
+	pkgpath := path.Join(gopath, "src", "github.com", "mattermost", "mattermost-server")
+	if _, err := os.Stat(pkgpath); os.IsNotExist(err) {
+		return "", fmt.Errorf("Can't find mattermost/mattermost-server in your GOPATH")
+	}
+
+	return path.Join(pkgpath, "model"), nil
+}
+
+func exitWithError(message ...interface{}) {
+	fmt.Println(message)
+	os.Exit(1)
 }
